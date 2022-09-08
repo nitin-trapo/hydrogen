@@ -1,0 +1,74 @@
+name: Tests and Lint
+
+on:
+  push:
+    branches:
+      - unstable
+      - 'v[0-9].x-[0-9]+-[0-9]+'
+      - 'v[0-9].[0-9].x-[0-9]+-[0-9]+'
+  pull_request:
+    branches:
+      - unstable
+      - 'v[0-9].x-[0-9]+-[0-9]+'
+      - 'v[0-9].[0-9].x-[0-9]+-[0-9]+'
+
+concurrency:
+  group: hydrogen-${{ github.head_ref }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        # os: [windows-latest, ubuntu-latest]
+        os: [ubuntu-latest]
+        node-version: [16.x, 18.x]
+
+    name: OS ${{ matrix.os }} / NodeJS ${{ matrix.node-version }}
+
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'yarn'
+
+      - name: Install the packages
+        # Bump yarn timeout to fix an issue with Windows CI downloading the Playwright/Chromium stuff
+        run: yarn install --frozen-lockfile --ignore-engines --network-timeout 36000
+
+      - name: Build the code
+        run: yarn build --force
+
+      - name: Check formatting
+        run: yarn format:check
+
+      - name: Lint the framework code
+        run: yarn lint
+
+      - name: Lint the template code
+        run: yarn lint
+        working-directory: ./templates/demo-store
+
+      - name: Type check hydrogen-ui
+        run: yarn typecheck
+        working-directory: ./packages/hydrogen-ui
+
+      - name: Run the unit tests
+        run: yarn test
+
+      - name: Run the E2E tests
+        run: yarn test-e2e
+        env:
+          CI: true
+
+      - name: Run template E2E tests
+        run: yarn test:ci
+        working-directory: ./templates/demo-store
+        env:
+          CI: true
